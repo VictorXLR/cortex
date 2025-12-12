@@ -22,7 +22,7 @@ pub mod state;
 
 // Re-exports for convenience
 pub use config::{CortexConfig, GenerationConfig};
-pub use inference::{CandleLLM, ChatTemplate, EngineState, StubEngine, TextEngine};
+pub use inference::{CandleLLM, ChatTemplate, Embedder, EngineState, StubEngine, TextEngine};
 pub use memory::Memory;
 pub use runtime::Cortex;
 pub use session::Session;

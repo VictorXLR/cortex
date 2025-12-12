@@ -105,6 +105,7 @@ impl Cortex {
         Self {
             config,
             engine: Box::new(engine),
+            embedder: None,
             memory,
             state_store,
             checkpoint_manager,
@@ -207,16 +208,63 @@ impl Cortex {
 
     // ==================== Memory ====================
 
+    /// Enable the dedicated embedding model for semantic search
+    ///
+    /// Downloads and loads a BERT-based model (all-MiniLM-L6-v2) that provides
+    /// high-quality semantic embeddings. This is recommended for production use.
+    ///
+    /// Note: This will reinitialize memory with the correct embedding dimension.
+    pub fn with_embedder(mut self) -> Result<Self> {
+        let embedder = Embedder::load_default()?;
+        let dim = embedder.dim();
+        self.embedder = Some(embedder);
+
+        // Reinitialize memory with correct dimension
+        let mut memory_config = self.config.memory.clone();
+        memory_config.embedding_dim = dim;
+        self.memory = Memory::new(memory_config);
+
+        Ok(self)
+    }
+
+    /// Enable embedder with a custom model
+    pub fn with_embedder_model(mut self, model_id: &str) -> Result<Self> {
+        let embedder = Embedder::load(model_id)?;
+        let dim = embedder.dim();
+        self.embedder = Some(embedder);
+
+        // Reinitialize memory with correct dimension
+        let mut memory_config = self.config.memory.clone();
+        memory_config.embedding_dim = dim;
+        self.memory = Memory::new(memory_config);
+
+        Ok(self)
+    }
+
+    /// Check if embedder is enabled
+    pub fn has_embedder(&self) -> bool {
+        self.embedder.is_some()
+    }
+
+    /// Get embedding for text (uses embedder if available, falls back to engine)
+    fn embed(&self, text: &str) -> Result<Vec<f32>> {
+        if let Some(ref embedder) = self.embedder {
+            embedder.embed(text)
+        } else {
+            self.engine.embed(text)
+        }
+    }
+
     /// Write to memory with auto-embedding
     pub fn remember(&mut self, key: impl Into<String>, content: impl Into<String>) -> Result<()> {
         let content = content.into();
-        let embedding = self.engine.embed(&content)?;
+        let embedding = self.embed(&content)?;
         self.memory.write(key, content, embedding)
     }
 
     /// Search memory by text query
     pub fn recall(&self, query: &str, k: usize) -> Result<Vec<String>> {
-        let query_embedding = self.engine.embed(query)?;
+        let query_embedding = self.embed(query)?;
         let results = self.memory.search(&query_embedding, k);
         Ok(results.into_iter().map(|r| r.entry.content).collect())
     }
@@ -307,7 +355,11 @@ impl Cortex {
 
     /// Get embedding dimension
     pub fn embedding_dim(&self) -> usize {
-        self.engine.embedding_dim()
+        if let Some(ref embedder) = self.embedder {
+            embedder.dim()
+        } else {
+            self.engine.embedding_dim()
+        }
     }
 
     /// Get config

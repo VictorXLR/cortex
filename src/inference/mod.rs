@@ -225,11 +225,38 @@ impl TextEngine for StubEngine {
     }
 
     fn embed(&self, text: &str) -> Result<Vec<f32>> {
-        // Deterministic embedding based on text hash
-        let hash = text.bytes().fold(0u64, |acc, b| acc.wrapping_add(b as u64));
-        let embedding: Vec<f32> = (0..self.embedding_dim)
-            .map(|i| ((hash.wrapping_add(i as u64) % 1000) as f32 / 1000.0) - 0.5)
+        // Bag-of-words style embedding: each word hashes to positions in the vector
+        // This gives texts with similar words similar embeddings (for testing)
+        let mut embedding = vec![0.0f32; self.embedding_dim];
+
+        // Normalize text and split into words
+        let text_lower = text.to_lowercase();
+        let words: Vec<&str> = text_lower
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| w.len() > 1)
             .collect();
+
+        // Each word contributes to multiple positions based on its hash
+        for word in &words {
+            let hash = word.bytes().fold(0u64, |acc, b| {
+                acc.wrapping_mul(31).wrapping_add(b as u64)
+            });
+
+            // Activate multiple positions per word (sparse features)
+            for i in 0..8 {
+                let pos = ((hash.wrapping_add(i * 7919)) as usize) % self.embedding_dim;
+                embedding[pos] += 1.0;
+            }
+        }
+
+        // Normalize to unit length
+        let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
+        if norm > 0.0 {
+            for x in &mut embedding {
+                *x /= norm;
+            }
+        }
+
         Ok(embedding)
     }
 

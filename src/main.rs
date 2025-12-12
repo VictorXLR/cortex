@@ -39,6 +39,10 @@ enum Commands {
         /// Maximum tokens to generate
         #[arg(long, default_value = "1024")]
         max_tokens: u32,
+
+        /// Enable semantic memory (downloads embedding model on first use)
+        #[arg(long)]
+        memory: bool,
     },
 
     /// Generate a single completion
@@ -89,8 +93,9 @@ fn main() -> anyhow::Result<()> {
             system,
             temperature,
             max_tokens,
+            memory,
         } => {
-            run_chat(model, session, system, temperature, max_tokens)?;
+            run_chat(model, session, system, temperature, max_tokens, memory)?;
         }
 
         Commands::Generate {
@@ -124,6 +129,7 @@ fn run_chat(
     system: Option<String>,
     temperature: f32,
     max_tokens: u32,
+    enable_memory: bool,
 ) -> anyhow::Result<()> {
     let config = GenerationConfig {
         temperature,
@@ -149,20 +155,33 @@ fn run_chat(
         println!("Loading model...");
         let mut ctx = Cortex::load(&model)?;
 
+        // Enable semantic memory if requested
+        if enable_memory {
+            println!("Loading embedding model for semantic memory...");
+            ctx = ctx.with_embedder()?;
+            println!("Memory enabled. Use /remember and /recall commands.\n");
+        }
+
         if let Some(sys) = system {
             ctx.chat(&[Message::system(sys)])?;
         }
 
-        println!("Model loaded. Type 'quit' to exit.\n");
-        run_chat_loop(&mut ctx, &config)?;
+        let help_msg = if enable_memory {
+            "Model loaded. Commands: quit, /remember <text>, /recall <query>\n"
+        } else {
+            "Model loaded. Type 'quit' to exit.\n"
+        };
+        println!("{}", help_msg);
+        run_chat_loop(&mut ctx, &config, enable_memory)?;
     }
 
     Ok(())
 }
 
-fn run_chat_loop(ctx: &mut Cortex, config: &GenerationConfig) -> anyhow::Result<()> {
+fn run_chat_loop(ctx: &mut Cortex, config: &GenerationConfig, memory_enabled: bool) -> anyhow::Result<()> {
     let stdin = io::stdin();
     let mut stdout = io::stdout();
+    let mut memory_counter = 0u32;
 
     loop {
         print!("You: ");
@@ -178,6 +197,43 @@ fn run_chat_loop(ctx: &mut Cortex, config: &GenerationConfig) -> anyhow::Result<
 
         if input == "quit" || input == "exit" {
             break;
+        }
+
+        // Handle memory commands if enabled
+        if memory_enabled {
+            if let Some(text) = input.strip_prefix("/remember ") {
+                memory_counter += 1;
+                let key = format!("mem_{}", memory_counter);
+                match ctx.remember(&key, text) {
+                    Ok(_) => println!("Remembered: \"{}\" (key: {})\n", text, key),
+                    Err(e) => println!("Error remembering: {}\n", e),
+                }
+                continue;
+            }
+
+            if let Some(query) = input.strip_prefix("/recall ") {
+                match ctx.recall(query, 5) {
+                    Ok(results) => {
+                        if results.is_empty() {
+                            println!("No memories found for: \"{}\"\n", query);
+                        } else {
+                            println!("Memories matching \"{}\":", query);
+                            for (i, content) in results.iter().enumerate() {
+                                println!("  {}. {}", i + 1, content);
+                            }
+                            println!();
+                        }
+                    }
+                    Err(e) => println!("Error recalling: {}\n", e),
+                }
+                continue;
+            }
+
+            if input == "/memories" {
+                let count = ctx.memory.len();
+                println!("Memory contains {} entries.\n", count);
+                continue;
+            }
         }
 
         print!("AI: ");
