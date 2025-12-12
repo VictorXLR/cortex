@@ -1,0 +1,66 @@
+[package]
+name = "cortex"
+version = "0.1.0"
+edition = "2021"
+description = "Native AI runtime with built-in memory, state management, and tool execution"
+license = "MIT"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Serialization (for checkpoints)
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bincode = "1"
+
+# Error handling
+thiserror = "1"
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# UUID for session IDs
+uuid = { version = "1", features = ["v4"] }
+
+# Directory paths
+dirs = "5"
+
+# CPU count
+num_cpus = "1"
+
+# Candle ML framework
+candle-core = "0.8"
+candle-nn = "0.8"
+candle-transformers = "0.8"
+
+# Tokenizers
+tokenizers = "0.20"
+
+# Model hub access
+hf-hub = "0.3"
+
+# Memory mapping for fast model loading
+memmap2 = "0.9"
+
+# Safe tensors format
+safetensors = "0.4"
+
+# Random number generation
+rand = "0.8"
+
+# HTTP client
+ureq = { version = "2", features = ["json"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[features]
+default = []
+cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda"]
+metal = ["candle-core/metal", "candle-nn/metal", "candle-transformers/metal"]
